@@ -20,6 +20,7 @@
 #ifndef HPP_CONSTRAINTS_RELATIVE_COM_HH
 # define HPP_CONSTRAINTS_RELATIVE_COM_HH
 
+# include <boost/assign/list_of.hpp>
 # include <hpp/core/differentiable-function.hh>
 # include <hpp/constraints/config.hh>
 # include <hpp/constraints/fwd.hh>
@@ -56,10 +57,12 @@ namespace hpp {
       /// Return a shared pointer to a new instance
       static RelativeComPtr_t create (const DevicePtr_t& robot,
 				      const JointPtr_t& joint,
-				      const vector3_t reference);
+				      const vector3_t reference,
+                                      std::vector <bool> mask =
+                                      boost::assign::list_of (true)(true)(true));
       virtual ~RelativeCom () throw () {}
       RelativeCom (const DevicePtr_t& robot, const JointPtr_t& joint,
-		   const vector3_t reference);
+		   const vector3_t reference, std::vector <bool> mask);
     protected:
       /// Compute value of error
       ///
@@ -75,6 +78,7 @@ namespace hpp {
       JointPtr_t joint_;
       vector3_t reference_;
       mutable eigen::matrix3_t cross_;
+      fcl::Matrix3f SBT_;
     }; // class RelativeCom
   } // namespace constraints
 } // namespace hpp

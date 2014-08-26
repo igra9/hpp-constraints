@@ -43,19 +43,31 @@ namespace hpp {
 
     RelativeComPtr_t RelativeCom::create (const DevicePtr_t& robot,
 					  const JointPtr_t& joint,
-					  const vector3_t reference)
+					  const vector3_t reference, 
+                                          std::vector <bool> mask)
     {
-      RelativeCom* ptr = new RelativeCom (robot, joint, reference);
+      RelativeCom* ptr = new RelativeCom (robot, joint, reference, mask);
       RelativeComPtr_t shPtr (ptr);
       return shPtr;
     }
 
     RelativeCom::RelativeCom (const DevicePtr_t& robot, const JointPtr_t& joint,
-			      const vector3_t reference) :
-      DifferentiableFunction (robot->configSize (), robot->numberDof (), 3, "RelativeCom"),
-      robot_ (robot), joint_ (joint), reference_ (reference)
+			      const vector3_t reference, std::vector <bool> mask) :
+      DifferentiableFunction (robot->configSize (), robot->numberDof (), 
+                               3, "RelativeCom"),
+      robot_ (robot), joint_ (joint), reference_ (reference), SBT_()
     {
       cross_.setZero ();
+      for (std::size_t i=0; i<3; ++i) 
+      {
+        for (std::size_t j=0; j<3; ++j) 
+           SBT_ (i, j) = 0.0;
+
+	if (mask [i]) 
+        {
+	  SBT_ (i, i) = 1;
+	}
+      }
     }
 
     void RelativeCom::impl_compute (vectorOut_t result,
@@ -68,7 +80,9 @@ namespace hpp {
       const vector3_t& x = robot_->positionCenterOfMass ();
       fcl::Matrix3f RT = M.getRotation (); RT.transpose ();
       const fcl::Vec3f& t = M.getTranslation ();
-      eigen::convert (RT * (x - t) - reference_, result);
+
+      fcl::Matrix3f RoT (SBT_);
+      eigen::convert (RT * RoT (x - tl) - reference_, result);
     }
 
     void RelativeCom::impl_jacobian (matrixOut_t jacobian,
@@ -86,6 +100,8 @@ namespace hpp {
       cross_ (0,2) = x [1] - t [1]; cross_ (2,0) = -x [1] + t [1];
       cross_ (1,2) = -x [0] + t [0]; cross_ (2,1) = x [0] - t [0];
       eigen::matrix3_t eigenRT; eigen::convert (RT, eigenRT);
+      eigen::matrix3_t eigenSBT; eigen::convert (SBT_, eigenSBT);
+      eigenRT = eigenSBT * eigenRT;
       jacobian.leftCols (Jjoint.cols ()) =
 	eigenRT * (Jcom + cross_ * Jjoint.bottomRows (3) - Jjoint.topRows (3));
       jacobian.rightCols (jacobian.cols () - Jjoint.cols ()).setZero ();
