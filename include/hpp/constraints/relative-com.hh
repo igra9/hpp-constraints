@@ -77,7 +77,8 @@ namespace hpp {
       DevicePtr_t robot_;
       JointPtr_t joint_;
       vector3_t reference_;
-      mutable eigen::matrix3_t cross_;
+      mutable eigen::matrix3_t crossR_;
+      mutable eigen::matrix3_t crossL_;
       fcl::Matrix3f SBT_;
     }; // class RelativeCom
   } // namespace constraints

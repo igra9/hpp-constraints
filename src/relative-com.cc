@@ -57,7 +57,12 @@ namespace hpp {
                                3, "RelativeCom"),
       robot_ (robot), joint_ (joint), reference_ (reference), SBT_()
     {
-      cross_.setZero ();
+      crossR_.setZero ();
+      crossL_.setZero ();
+      //-----------Added part -------------------------------mask [0] + mask [1] + mask [2]
+      //size_type nbRows = 3; //mask [0] + mask [1] + mask [2];
+      //matrix_t selection (nbRows, 3); selection.setZero ();
+      //size_type row = 0;
       for (std::size_t i=0; i<3; ++i) 
       {
         for (std::size_t j=0; j<3; ++j) 
@@ -66,8 +71,11 @@ namespace hpp {
 	if (mask [i]) 
         {
 	  SBT_ (i, i) = 1;
+	  //++row;
 	}
+        //++row;     //leave the matrix squared (just leave in zeros de non-fixed axis row)
       }
+      //SBT_ = selection;
     }
 
     void RelativeCom::impl_compute (vectorOut_t result,
@@ -76,13 +84,25 @@ namespace hpp {
     {
       robot_->currentConfiguration (argument);
       robot_->computeForwardKinematics ();
-      const Transform3f& M = joint_->currentTransformation ();
+      const Transform3f& Ml = joint_->currentTransformation ();
       const vector3_t& x = robot_->positionCenterOfMass ();
-      fcl::Matrix3f RT = M.getRotation (); RT.transpose ();
-      const fcl::Vec3f& t = M.getTranslation ();
+      //fcl::Matrix3f RT = Ml.getRotation (); RT.transpose ();
+      //const fcl::Vec3f& tl = Ml.getTranslation ();
 
+      JointPtr_t ra = robot_->getJointByName("RLEG_JOINT5");
+      const Transform3f& Mr = ra->currentTransformation ();
+      const fcl::Vec3f& pl = Ml.getTranslation ();
+      const fcl::Vec3f& pr = Mr.getTranslation ();
+      const fcl::Vec3f& center = (pl + pr)*0.5; 
+      //const fcl::Vec3f& center(c);
+      //const fcl::Vec3f& x_t = SBT_ * (x - tl); 
+      //const fcl::Vec3f& c_t = SBT_ * (center - tl);
       fcl::Matrix3f RoT (SBT_);
-      eigen::convert (RT * RoT (x - tl) - reference_, result);
+      eigen::convert (RoT * (x - center), result);  
+      //eigen::convert (RT * (RoT * (x - center)), result);                       
+      //Original:   
+      //eigen::convert (RT * (x - tl) - reference_, result);
+      //result = SBT_ * result;
     }
 
     void RelativeCom::impl_jacobian (matrixOut_t jacobian,
@@ -91,20 +111,37 @@ namespace hpp {
       robot_->currentConfiguration (arg);
       robot_->computeForwardKinematics ();
       const ComJacobian_t& Jcom = robot_->jacobianCenterOfMass ();
-      const JointJacobian_t& Jjoint (joint_->jacobian ());
-      const Transform3f& M = joint_->currentTransformation ();
-      fcl::Matrix3f RT (M.getRotation ()); RT.transpose ();
+      //const JointJacobian_t& Jjoint (joint_->jacobian ());
+      //const Transform3f& M = joint_->currentTransformation ();
+      //fcl::Matrix3f RT (M.getRotation ()); RT.transpose ();
       const vector3_t& x = robot_->positionCenterOfMass ();
-      const vector3_t& t (M.getTranslation ());
+      const JointJacobian_t& Jl (joint_->jacobian ());
+      JointPtr_t ra = robot_->getJointByName("RLEG_JOINT5");
+      const JointJacobian_t& Jr (ra->jacobian ());
+
+      //const Transform3f& Ml = joint_->currentTransformation ();
+      //const Transform3f& Mr = ra->currentTransformation ();
+      //const vector3_t& xr (Mr.getTranslation ());
+      //const vector3_t& xl (Ml.getTranslation ());
+      /*const vector3_t& t (M.getTranslation ());
       cross_ (0,1) = -x [2] + t [2]; cross_ (1,0) = x [2] - t [2];
       cross_ (0,2) = x [1] - t [1]; cross_ (2,0) = -x [1] + t [1];
-      cross_ (1,2) = -x [0] + t [0]; cross_ (2,1) = x [0] - t [0];
-      eigen::matrix3_t eigenRT; eigen::convert (RT, eigenRT);
+      cross_ (1,2) = -x [0] + t [0]; cross_ (2,1) = x [0] - t [0];  //*/
+      //crossR_ (0,1) = -xr [2];  crossR_ (1,0) = xr [2];
+      //crossR_ (0,2) = xr [1];   crossR_ (2,0) = -xr [1];
+      //crossR_ (1,2) = -xr [0];  crossR_ (2,1) = xr [0];
+      //crossL_ (0,1) = -xl [2];  crossL_ (1,0) = xl [2];
+      //crossL_ (0,2) = xl [1];   crossL_ (2,0) = -xl [1];
+      //crossL_ (1,2) = -xl [0];  crossL_ (2,1) = xl [0];
+
+      //eigen::matrix3_t eigenRT; eigen::convert (RT, eigenRT);
       eigen::matrix3_t eigenSBT; eigen::convert (SBT_, eigenSBT);
-      eigenRT = eigenSBT * eigenRT;
-      jacobian.leftCols (Jjoint.cols ()) =
-	eigenRT * (Jcom + cross_ * Jjoint.bottomRows (3) - Jjoint.topRows (3));
-      jacobian.rightCols (jacobian.cols () - Jjoint.cols ()).setZero ();
+      //eigenRT = eigenSBT * eigenRT;
+      jacobian.leftCols (Jl.cols ()) =
+	eigenSBT * (Jcom - 0.5* ( Jl.topRows (3) + Jr.topRows (3) ) );
+/*	eigenSBT * (Jcom - 0.5* ( (Jl.topRows (3) - crossL_ * Jl.bottomRows (3)) + 
+                                 (Jr.topRows (3) - crossR_ * Jr.bottomRows (3)) ) ); //*/
+      jacobian.rightCols (jacobian.cols () - Jl.cols ()).setZero ();
       hppDout (info, "Jcom = " << std::endl << Jcom);
       hppDout (info, "Jw = " << std::endl << Jjoint.bottomRows (3));
       hppDout (info, "Jv = " << std::endl << Jjoint.topRows (3));
